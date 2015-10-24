@@ -2,8 +2,7 @@
     Aquarispark v1.00
     By: Tim Soderstrom
 */
-#include "OneWire.h"
-#include "DallasTemperature.h"
+#include "particle-dallas-temperature.h"
 
 /* Custom Functions */
 #include "devices.h"
@@ -43,7 +42,8 @@ const int lcdUpdateInterval = 5;
 const int alertTimeout = 5;
 
 /* Timezone */
-const int timezone = -5;
+//const int timezone = -5;
+const int timezone = -6;
 
 /* 
  Temperature range to cycle heater in Celsius
@@ -99,7 +99,7 @@ float minTemp = 100;
 double currentTemp = 0;
 
 /* Heater Status */
-boolean heater = FALSE;
+boolean heater = false;
 int heaterCycles = 0;
 
 //String stats;
@@ -120,13 +120,17 @@ void setup()
 
   //Sync the Time
   Time.zone(timezone);
-  Spark.syncTime();
+  Particle.syncTime();
     
   // Subscribe variables to the cloud
-  Spark.variable("temperature", &currentTemp, DOUBLE);
-  Spark.variable("heater", &heater, INT);
-  Spark.variable("light", &light.state, INT);
-  Spark.variable("stats", &stats, STRING);
+  //Particle.variable("temperature", &currentTemp, DOUBLE);
+  //Particle.variable("heater", &heater, INT);
+  //Particle.variable("light", &light.state, INT);
+//  Particle.variable("light", boolToInt(&light.state), INT);
+  //Particle.variable("stats", &stats, STRING);
+  Particle.variable("temperature", currentTemp);
+  Particle.variable("heater", heater);
+  Particle.variable("light", light.state);
     
   // Turn off that incredibly bright LED
   RGB.control(true);
@@ -159,19 +163,19 @@ void loop()
       Serial.println("Light Off");
     
     // Stats Output for API
-    sprintf(stats, "%.2f", currentTemp);
-    strcat(stats, ":");
-    strcat(stats, boolToChar(heater));
-    strcat(stats, ":");
-    strcat(stats, boolToChar(light.state));
+    //sprintf(stats, "%.2f", currentTemp);
+    //strcat(stats, ":");
+    //strcat(stats, boolToChar(heater));
+    //strcat(stats, ":");
+    //strcat(stats, boolToChar(light.state));
     
     lastSensorPoll = currentMillis;
   }
   if (currentMillis - lastTimeSync > oneDayMillis)
   {
-    // Request time synchronization from the Spark Cloud
+    // Request time synchronization from the Particle Cloud
         Serial.println("Syncing Time");
-    Spark.syncTime();
+    Particle.syncTime();
     lastTimeSync = millis();
   }
 }
@@ -217,10 +221,18 @@ void controlHeater()
     heater = true;
   }
 }
-
+/*
 char* boolToChar(boolean b)
 {
     if(b)
-        return "1";
-    return "0";
+        return '1';
+    return '0';
 }
+
+int boolToInt(boolean b)
+{
+    if(b)
+        return 1;
+    return 0;
+}
+*/
