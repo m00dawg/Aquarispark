@@ -75,6 +75,7 @@ const float alertLowTemp = 23.0;
 
 // Temperature Sensors
 DS18B20 sensors = DS18B20(temperatureProbes);
+int sensorAttempts=0;
 
 // MQTT
 void mqtt_callback(char* topic, byte* payload, unsigned int length);
@@ -198,8 +199,20 @@ boolean collectTemperatures()
     if(!sensors.search())
     {
         sensors.resetsearch();
-
         currentTemp = sensors.getTemperature();
+        while (!sensors.crcCheck() && sensorAttempts < 4)
+        {
+            Serial.println("Caught bad value.");
+            sensorAttempts++;
+            Serial.print("Attempts to Read: ");
+            Serial.println(sensorAttempts);
+            if (sensorAttempts == 3)
+                delay(1000);
+            sensors.resetsearch();
+            currentTemp = sensors.getTemperature();
+            continue;
+        }
+        sensorAttempts = 0;
         Serial.print("Current Temperature: ");
         Serial.println(currentTemp);
         /* Check to see if we hit a new low or high temp */
