@@ -2,7 +2,12 @@
     Aquarispark v1.00
     By: Tim Soderstrom
 */
-#include "particle-dallas-temperature.h"
+//#include "particle-dallas-temperature.h"
+//#include "DallasTemperature.h"
+#include "Particle-OneWire.h"
+#include "DS18B20.h"
+#include "MQTT.h"
+
 
 /* Custom Functions */
 #include "devices.h"
@@ -36,14 +41,17 @@ const int temperatureProbes = D2;
 const int heaterPin = A0;
 const int lightPin = A2;
 
-/* Polling and update timeouts */
-const int sensorPollingInterval = 5;
-const int lcdUpdateInterval = 5;
-const int alertTimeout = 5;
+/* Polling */
+//const int sensorPollingInterval = 5;
+const int sensorPollingInterval = 20;
 
 /* Timezone */
-//const int timezone = -5;
-const int timezone = -6;
+const int timezone = -5;
+//const int timezone = -6;
+
+/* MQTT Server */
+byte mqtt_server[] = { 192,168,100,2 };
+int mqtt_port = 1883;
 
 /* 
  Temperature range to cycle heater in Celsius
@@ -65,17 +73,17 @@ const float alertLowTemp = 23.0;
  * ------- 
  */
 
-OneWire oneWire(temperatureProbes);
-DallasTemperature sensors = DallasTemperature(&oneWire);
+// Temperature Sensors
+DS18B20 sensors = DS18B20(temperatureProbes);
 
-// Arrays to hold temperature devices 
-// DeviceAddress insideThermometer, outsideThermometer;
-DeviceAddress tankThermometer;
+// MQTT
+void mqtt_callback(char* topic, byte* payload, unsigned int length);
+MQTT mqtt(mqtt_server, mqtt_port, mqtt_callback);
 
+// Light Schedule 
 DeviceOnSchedule light = 
 {
-      { 8, 0, 21, 0 }, // 8am - 9pm CST
-//  { 3, 0, 16, 0 }, // 8am - 9pm CST (converted to UTC)
+  { 10, 0, 17, 0 }, // 10am - 5pm CST
   lightPin,
   true                 // State
 };            
@@ -117,6 +125,7 @@ void setup()
   digitalWrite(lightPin, HIGH);
   pinMode(heaterPin, OUTPUT);
   digitalWrite(heaterPin, LOW);
+  pinMode(temperatureProbes, INPUT);
 
   //Sync the Time
   Time.zone(timezone);
@@ -136,66 +145,71 @@ void setup()
   RGB.control(true);
   RGB.color(0, 255, 0);
   RGB.brightness(32);
+
+  // Connect to MQTT
+  mqtt.connect("Aquarispark");
 }
 
 void loop()
 {
-//  currentMillis = millis() + (timezone * SECS_PER_HOUR * msInSecond);
     currentMillis = millis();
-
-  /* If it's been longer than the polling interval, poll sensors */
-  if (currentMillis - lastSensorPoll > sensorPollingInterval * msInSecond)
-  {
     Serial.print("Time: ");
     Serial.print(Time.hour());
     Serial.print(":");
     Serial.println(Time.minute());
         
     if(collectTemperatures())
-      controlHeater();
+        controlHeater();
     else
-            Serial.println("NO SENSORS");
+        Serial.println("NO SENSORS");
     
     // Check to see if it's time for light to turn on/off
     if(checkSchedule(light))
+    {
       Serial.println("Light On");
+      mqtt.publish("aquarispark/light", "1");
+    }
     else
+    {
       Serial.println("Light Off");
-    
-    // Stats Output for API
-    //sprintf(stats, "%.2f", currentTemp);
-    //strcat(stats, ":");
-    //strcat(stats, boolToChar(heater));
-    //strcat(stats, ":");
-    //strcat(stats, boolToChar(light.state));
+      mqtt.publish("aquarispark/light", "0");
+    }
     
     lastSensorPoll = currentMillis;
-  }
+  
   if (currentMillis - lastTimeSync > oneDayMillis)
   {
     // Request time synchronization from the Particle Cloud
-        Serial.println("Syncing Time");
+    Serial.println("Syncing Time");
     Particle.syncTime();
     lastTimeSync = millis();
   }
+
+  delay((long)sensorPollingInterval * msInSecond);
 }
 
 
 boolean collectTemperatures()
 {
-  sensors.requestTemperatures();
-  if(sensors.getAddress(tankThermometer, 0))
-  {
-    currentTemp = sensors.getTempC(tankThermometer);
+  //sensors.requestTemperatures();
+ // if(sensors.getAddress(tankThermometer, 0))
+ // {
+//        currentTemp = sensors.getTemperature(tankThermometer);
+    if(!sensors.search())
+    {
+        sensors.resetsearch();
+
+        currentTemp = sensors.getTemperature();
         Serial.print("Current Temperature: ");
         Serial.println(currentTemp);
-    /* Check to see if we hit a new low or high temp */
-    if(currentTemp > maxTemp)
-      maxTemp = currentTemp;
-    if(currentTemp < minTemp)
-      minTemp = currentTemp;
-    return true;
-  }
+        /* Check to see if we hit a new low or high temp */
+        if(currentTemp > maxTemp)
+            maxTemp = currentTemp;
+        if(currentTemp < minTemp)
+            minTemp = currentTemp;
+        mqtt.publish("aquarispark/temp", String(currentTemp));
+        return true;
+    }
   return false;
 }
 
@@ -204,8 +218,9 @@ void controlHeater()
   /* If temperature is too high, turn off heater */
   if(currentTemp > highTemp)
   {
-      Serial.println("Heater Off");
     digitalWrite(heaterPin, LOW);
+    mqtt.publish("aquarispark/heater", "0");
+    Serial.println("Heater Off");
     /* If the heater was on, we know we have completed a 
      * cycle, so let's count it */
     if(heater)
@@ -216,8 +231,9 @@ void controlHeater()
   /* If the temperature is too low, turn on heater */
   if(currentTemp < lowTemp)
   {
-      Serial.println("Heater On");
     digitalWrite(heaterPin, HIGH);
+    mqtt.publish("aquarispark/heater", "1");
+    Serial.println("Heater On");
     heater = true;
   }
 }
@@ -236,3 +252,8 @@ int boolToInt(boolean b)
     return 0;
 }
 */
+
+/* Currently do nothing because we don't need to receive messages */
+void mqtt_callback(char* topic, byte* payload, unsigned int length) 
+{
+}
